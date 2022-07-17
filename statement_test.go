@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-func initData() (map[string]Play, Invoice) {
-	playsStr := []byte(`
-		`)
-	plays := make(map[string]Play)
-	_ = json.Unmarshal(playsStr, &plays)
+func initData() Invoice {
 	invoiceStr := []byte(`
 		{
 		"customer": "BigCo",
@@ -31,15 +27,14 @@ func initData() (map[string]Play, Invoice) {
 	  }`)
 	var invoice Invoice
 	_ = json.Unmarshal(invoiceStr, &invoice)
-	return plays, invoice
+	return invoice
 }
 
 func Test_statement(t *testing.T) {
 	type args struct {
 		invoice Invoice
-		plays   map[string]Play
 	}
-	plays, invoice := initData()
+	invoice := initData()
 	tests := []struct {
 		name       string
 		args       args
@@ -50,7 +45,6 @@ func Test_statement(t *testing.T) {
 			"normal case",
 			args{
 				invoice: invoice,
-				plays:   plays,
 			},
 			"Statement for BigCo\n  Hamlet: $650.00 (55 seats)\n  As You Like It: $580.00 (35 seats)\n  Othello: $500.00 (40 seats)\nAmount owed is $1,730.00\nYou earned 47 credits\n",
 			false,
@@ -58,7 +52,7 @@ func Test_statement(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotResult, err := statement(tt.args.invoice, tt.args.plays)
+			gotResult, err := statement(tt.args.invoice)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("statement() error = %v, wantErr %v", err, tt.wantErr)
 				return
