@@ -8,11 +8,7 @@ import (
 
 func initData() (map[string]Play, Invoice) {
 	playsStr := []byte(`
-		{
-		  "hamlet": { "name": "Hamlet", "type": "tragedy" },
-		  "as-like": { "name": "As You Like It", "type": "comedy" },
-		  "othello": { "name": "Othello", "type": "tragedy" }
-		}`)
+		`)
 	plays := make(map[string]Play)
 	_ = json.Unmarshal(playsStr, &plays)
 	invoiceStr := []byte(`
