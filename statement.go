@@ -46,20 +46,19 @@ func statement(invoice Invoice) (result string, err error) {
 
 func enrichPerformance(aPerformance Performance) (enrichedPerformance, error) {
 	result := enrichedPerformance{
-		Performance: aPerformance,
-		play:        playFor(aPerformance),
+		PerfCalculator: NewPerfCalculator(aPerformance, playFor(aPerformance)),
 	}
-	amount, err := amountFor(result)
-	if err == nil {
-		result.amount = amount
+	if result.PerfCalculator == nil {
+		return result, errors.New("construct perf calculator fail")
 	}
-	return result, err
+	result.amount = result.PerfCalculator.getAmount()
+	return result, nil
 }
 
 func renderPlainText(data *statementData) string {
 	result := fmt.Sprintf("Statement for %s\n", data.Customer)
 	for _, perf := range data.Performances {
-		result += fmt.Sprintf("  %s: %s (%d seats)\n", perf.play.Name, usd(perf.amount), perf.Audience)
+		result += fmt.Sprintf("  %s: %s (%d seats)\n", perf.getPlay().Name, usd(perf.amount), perf.getPerf().Audience)
 	}
 	result += fmt.Sprintf("Amount owed is %s\n", usd(data.TotalAmount))
 	result += fmt.Sprintf("You earned %d credits\n", data.TotalCredits)
@@ -78,7 +77,7 @@ func renderHTML(data *statementData) string {
 	result := "<h1>Statement for ${data.customer}</h1>\n"
 	result += "<tr><th>play</th><th>seats</th><th>cost</th></tr>"
 	for _, perf := range data.Performances {
-		result += fmt.Sprintf("<tr><td>%s</td><td>%d</td>", perf.play.Name, perf.Audience)
+		result += fmt.Sprintf("<tr><td>%s</td><td>%d</td>", perf.getPlay().Name, perf.getPerf().Audience)
 		result += fmt.Sprintf("<td>%s</td></tr>\n", usd(perf.amount))
 	}
 	result += "</table>\n"
@@ -87,20 +86,94 @@ func renderHTML(data *statementData) string {
 	return result
 }
 
-func totalVolumeCredits(data *statementData) int {
-	result := 0
-	for _, perf := range data.Performances {
-		result += volumeCreditsFor(perf)
+type PerfCalculator interface {
+	getPlay() Play
+	getPerf() Performance
+	getAmount() int
+	getCredits() int
+}
+
+type PerformanceBasicInfo struct {
+	perf Performance
+	play Play
+}
+
+func (p PerformanceBasicInfo) getPlay() Play {
+	return p.play
+}
+
+func (p PerformanceBasicInfo) getPerf() Performance {
+	return p.perf
+}
+
+func NewPerfCalculator(aPerf Performance, aPlay Play) PerfCalculator {
+	switch aPlay.Type {
+	case "comedy":
+		return newComedyCalculator(aPerf, aPlay)
+	case "tragedy":
+		return newTragedyCalculator(aPerf, aPlay)
+	default:
+		return nil
+	}
+}
+
+type ComedyCalculator struct {
+	PerformanceBasicInfo
+}
+
+func newComedyCalculator(aPerf Performance, aPlay Play) *ComedyCalculator {
+	return &ComedyCalculator{
+		PerformanceBasicInfo{
+			perf: aPerf,
+			play: aPlay,
+		},
+	}
+}
+
+func (c *ComedyCalculator) getAmount() int {
+	result := 30000
+	if c.perf.Audience > 20 {
+		result += 10000 + 500*(c.perf.Audience-20)
+	}
+	result += 300 * c.perf.Audience
+	return result
+}
+
+func (c *ComedyCalculator) getCredits() int {
+	return int(math.Max(float64(c.perf.Audience-30), 0)) + int(math.Floor(float64(c.perf.Audience/5)))
+}
+
+type TragedyCalculator struct {
+	PerformanceBasicInfo
+}
+
+func newTragedyCalculator(aPerf Performance, aPlay Play) *TragedyCalculator {
+	return &TragedyCalculator{
+		PerformanceBasicInfo{
+			perf: aPerf,
+			play: aPlay,
+		},
+	}
+}
+
+func (t *TragedyCalculator) getAmount() int {
+	result := 40000
+	if t.perf.Audience > 30 {
+		result += 1000 * (t.perf.Audience - 30)
 	}
 	return result
 }
 
-func volumeCreditsFor(perf enrichedPerformance) int {
-	volumeCredits := int(math.Max(float64(perf.Audience-30), 0))
-	if perf.play.Type == "comedy" {
-		volumeCredits += int(math.Floor(float64(perf.Audience / 5)))
+func (t *TragedyCalculator) getCredits() int {
+	return int(math.Max(float64(t.perf.Audience-30), 0))
+}
+
+func totalVolumeCredits(data *statementData) int {
+	result := 0
+	for _, perf := range data.Performances {
+		result += perf.getCredits()
 	}
-	return volumeCredits
+	return result
 }
 
 func totalAmount(data *statementData) int {
@@ -109,26 +182,6 @@ func totalAmount(data *statementData) int {
 		result += perf.amount
 	}
 	return result
-}
-
-func amountFor(perf enrichedPerformance) (int, error) {
-	result := 0
-	switch perf.play.Type {
-	case "tragedy":
-		result = 40000
-		if perf.Audience > 30 {
-			result += 1000 * (perf.Audience - 30)
-		}
-	case "comedy":
-		result = 30000
-		if perf.Audience > 20 {
-			result += 10000 + 500*(perf.Audience-20)
-		}
-		result += 300 * perf.Audience
-	default:
-		return 0, errors.New("invalid play type")
-	}
-	return result, nil
 }
 
 func playFor(aPerformance Performance) Play {
