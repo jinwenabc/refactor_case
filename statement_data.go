@@ -1,8 +1,7 @@
 package main
 
 type enrichedPerformance struct {
-	Performance
-	play   Play
+	PerfCalculator
 	amount int
 }
 
