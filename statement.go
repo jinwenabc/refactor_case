@@ -37,56 +37,83 @@ func init() {
 }
 
 func statement(invoice Invoice) (result string, err error) {
-	result = fmt.Sprintf("Statement for %s\n", invoice.Customer)
-	for _, perf := range invoice.Performances {
-		thisAmount, err2 := amountFor(perf)
-		if err2 != nil {
-			return "", err2
-		}
-		result += fmt.Sprintf("  %s: %s (%d seats)\n", playFor(perf).Name, usd(thisAmount), perf.Audience)
+	var data *statementData
+	if data, err = createStatementData(invoice); err != nil {
+		return "", err
 	}
-
-	amount, err3 := totalAmount(invoice)
-	if err3 != nil {
-		return "", err3
-	}
-
-	result += fmt.Sprintf("Amount owed is %s\n", usd(amount))
-	result += fmt.Sprintf("You earned %d credits\n", totalVolumeCredits(invoice))
-	return
+	return renderPlainText(data), nil
 }
 
-func totalVolumeCredits(invoice Invoice) int {
+func enrichPerformance(aPerformance Performance) (enrichedPerformance, error) {
+	result := enrichedPerformance{
+		Performance: aPerformance,
+		play:        playFor(aPerformance),
+	}
+	amount, err := amountFor(result)
+	if err == nil {
+		result.amount = amount
+	}
+	return result, err
+}
+
+func renderPlainText(data *statementData) string {
+	result := fmt.Sprintf("Statement for %s\n", data.Customer)
+	for _, perf := range data.Performances {
+		result += fmt.Sprintf("  %s: %s (%d seats)\n", perf.play.Name, usd(perf.amount), perf.Audience)
+	}
+	result += fmt.Sprintf("Amount owed is %s\n", usd(data.TotalAmount))
+	result += fmt.Sprintf("You earned %d credits\n", data.TotalCredits)
+	return result
+}
+
+func htmlStatement(invoice Invoice) (result string, err error) {
+	var data *statementData
+	if data, err = createStatementData(invoice); err != nil {
+		return "", err
+	}
+	return renderHTML(data), nil
+}
+
+func renderHTML(data *statementData) string {
+	result := "<h1>Statement for ${data.customer}</h1>\n"
+	result += "<tr><th>play</th><th>seats</th><th>cost</th></tr>"
+	for _, perf := range data.Performances {
+		result += fmt.Sprintf("<tr><td>%s</td><td>%d</td>", perf.play.Name, perf.Audience)
+		result += fmt.Sprintf("<td>%s</td></tr>\n", usd(perf.amount))
+	}
+	result += "</table>\n"
+	result += "<p>Amount owed is <em>${usd(data.totalAmount)}</em></p>\n"
+	result += "<p>You earned <em>${data.totalVolumeCredits}</em> credits</p>\n"
+	return result
+}
+
+func totalVolumeCredits(data *statementData) int {
 	result := 0
-	for _, perf := range invoice.Performances {
+	for _, perf := range data.Performances {
 		result += volumeCreditsFor(perf)
 	}
 	return result
 }
 
-func volumeCreditsFor(perf Performance) int {
+func volumeCreditsFor(perf enrichedPerformance) int {
 	volumeCredits := int(math.Max(float64(perf.Audience-30), 0))
-	if playFor(perf).Type == "comedy" {
+	if perf.play.Type == "comedy" {
 		volumeCredits += int(math.Floor(float64(perf.Audience / 5)))
 	}
 	return volumeCredits
 }
 
-func totalAmount(invoice Invoice) (int, error) {
+func totalAmount(data *statementData) int {
 	result := 0
-	for _, perf := range invoice.Performances {
-		amount, err := amountFor(perf)
-		if err != nil {
-			return 0, err
-		}
-		result += amount
+	for _, perf := range data.Performances {
+		result += perf.amount
 	}
-	return result, nil
+	return result
 }
 
-func amountFor(perf Performance) (int, error) {
+func amountFor(perf enrichedPerformance) (int, error) {
 	result := 0
-	switch playFor(perf).Type {
+	switch perf.play.Type {
 	case "tragedy":
 		result = 40000
 		if perf.Audience > 30 {
